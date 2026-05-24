@@ -14,10 +14,14 @@ import org.springframework.web.bind.annotation.*;
 public class MeetingController {
 
     private final MeetingService meetingService;
-
+    // ... inside MeetingController ...
     @PostMapping("/upload")
-    public ResponseEntity<Meeting> uploadMeeting(@RequestBody MeetingUploadRequest request) {
-        Meeting savedMeeting = meetingService.saveRawMeeting(request);
-        return new ResponseEntity<>(savedMeeting, HttpStatus.CREATED);
+    public ResponseEntity<String> uploadMeeting(@RequestBody MeetingUploadRequest request) {
+        Meeting savedMeeting = meetingService.processAndSaveMeeting(request);
+
+        return new ResponseEntity<>(
+                "Meeting processed successfully. ID: " + savedMeeting.getId(),
+                HttpStatus.CREATED
+        );
     }
 }
