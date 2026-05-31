@@ -19,8 +19,8 @@ public class SecurityConfig {
 
                 // Configure authorization rules
                 .authorizeHttpRequests(auth -> auth
-                        // Permit all public API routes
-                        .requestMatchers("/api/v1/**", "/api/chat/**", "/error").permitAll()
+                        // Permit all public API routes and static frontend resources
+                        .requestMatchers("/", "/index.html", "/favicon.ico", "/api/v1/**", "/api/chat/**", "/error").permitAll()
                         .anyRequest().authenticated()
                 );
 

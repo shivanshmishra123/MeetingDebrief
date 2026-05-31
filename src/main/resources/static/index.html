@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Debrief — Second Brain Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ── Reset & Base ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        /* ── Dashboard Layout Container ── */
+        .app-container {
+            display: flex;
+            gap: 32px;
+            width: 100%;
+            max-width: 1140px;
+            flex-direction: row;
+            align-items: stretch;
+            justify-content: center;
+        }
+
+        @media (max-width: 900px) {
+            .app-container {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 36px;
+            width: 100%;
+            max-width: 540px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .header { margin-bottom: 24px; }
+        .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+        .header p { font-size: 13.5px; color: #6e6e73; margin-top: 6px; line-height: 1.5; }
+
+        /* ── Title Input ── */
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 13px; font-weight: 500; color: #3c3c43; margin-bottom: 6px; }
+        .field input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid #e0e0e5;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14.5px;
+            color: #1d1d1f;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .field input:focus { border-color: #0071e3; }
+
+        /* ── Drop Zone ── */
+        .drop-zone {
+            border: 2px dashed #d0d0d5;
+            border-radius: 14px;
+            padding: 32px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 16px;
+            position: relative;
+        }
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: #0071e3;
+            background: #f0f6ff;
+        }
+        .drop-zone input[type="file"] {
+            position: absolute; inset: 0;
+            opacity: 0; cursor: pointer; width: 100%; height: 100%;
+        }
+        .drop-zone .icon { font-size: 32px; margin-bottom: 8px; }
+        .drop-zone .main-text { font-size: 14.5px; font-weight: 500; color: #1d1d1f; }
+        .drop-zone .sub-text { font-size: 12.5px; color: #8e8e93; margin-top: 4px; }
+        .drop-zone .file-selected {
+            font-size: 13.5px; font-weight: 500;
+            color: #0071e3; margin-top: 8px;
+        }
+
+        /* ── Submit Button ── */
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: #0071e3;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn-submit:hover:not(:disabled) { background: #0077ed; }
+        .btn-submit:active:not(:disabled) { transform: scale(0.99); }
+        .btn-submit:disabled { background: #a0c4eb; cursor: not-allowed; }
+
+        /* ── Progress States ── */
+        .status-block {
+            display: none;
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 12px;
+            background: #f5f5f7;
+        }
+        .status-block.visible { display: block; }
+
+        .status-step {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 0;
+            font-size: 13.5px;
+            color: #8e8e93;
+            transition: color 0.3s;
+        }
+        .status-step.active { color: #0071e3; font-weight: 500; }
+        .status-step.done { color: #28a745; }
+        .status-step.error { color: #dc3545; }
+
+        .step-icon { font-size: 16px; width: 20px; text-align: center; }
+
+        /* Spinner */
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid #d0e8ff;
+            border-top-color: #0071e3;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Transcript Preview ── */
+        .transcript-preview {
+            display: none;
+            margin-top: 20px;
+            padding: 16px;
+            background: #f9f9fb;
+            border: 1.5px solid #e0e0e5;
+            border-radius: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .transcript-preview.visible { display: block; }
+        .transcript-preview h3 { font-size: 12px; font-weight: 600; color: #3c3c43; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .transcript-preview p { font-size: 13px; line-height: 1.6; color: #3c3c43; white-space: pre-wrap; }
+
+        /* ── Success Banner ── */
+        .success-banner {
+            display: none;
+            margin-top: 16px;
+            padding: 14px 18px;
+            background: #e8f5e9;
+            border: 1.5px solid #a5d6a7;
+            border-radius: 12px;
+            font-size: 13.5px;
+            color: #2e7d32;
+        }
+        .success-banner.visible { display: block; }
+        .success-banner strong { display: block; font-weight: 600; margin-bottom: 4px; }
+
+        /* ── CHAT SECTION SPECIFIC ── */
+        .chat-card {
+            display: flex;
+            flex-direction: column;
+            min-height: 520px;
+        }
+
+        .chat-area {
+            flex-grow: 1;
+            border: 1.5px solid #e0e0e5;
+            border-radius: 12px;
+            padding: 16px;
+            background: #f9f9fb;
+            overflow-y: auto;
+            max-height: 240px;
+            min-height: 200px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .chat-placeholder {
+            color: #8e8e93;
+            text-align: center;
+            margin: auto;
+            font-size: 13.5px;
+            line-height: 1.5;
+            max-width: 280px;
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13.5px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            background: #0071e3;
+            color: #ffffff;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant {
+            background: #e5e5ea;
+            color: #1d1d1f;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.error {
+            background: #ffebee;
+            color: #c62828;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.assistant .sources {
+            display: block;
+            font-size: 11px;
+            color: #8e8e93;
+            margin-top: 6px;
+            border-top: 1px solid #d1d1d6;
+            padding-top: 4px;
+        }
+
+        .chat-input-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input-form input {
+            flex-grow: 1;
+            padding: 12px 16px;
+            border: 1.5px solid #e0e0e5;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input-form input:focus {
+            border-color: #0071e3;
+        }
+
+        .btn-send {
+            padding: 12px 20px;
+            background: #0071e3;
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-send:hover {
+            background: #0077ed;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+
+    <!-- CARD 1: MEETING AUDIO UPLOAD -->
+    <div class="card">
+        <div>
+            <div class="header">
+                <h1>🧠 Meeting Debrief</h1>
+                <p>Upload meeting audio to transcribe, extract structured context with Gemini, and store in your Second Brain database.</p>
+            </div>
+
+            <form id="uploadForm">
+                <div class="field">
+                    <label for="meetingTitle">Meeting Title</label>
+                    <input type="text" id="meetingTitle" placeholder="e.g. Q3 Planning Session" required />
+                </div>
+
+                <div class="drop-zone" id="dropZone">
+                    <input type="file" id="audioInput" accept="audio/mpeg,audio/wav,audio/mp4,audio/m4a,audio/ogg" />
+                    <div class="icon">🎙️</div>
+                    <div class="main-text">Drop your audio file here</div>
+                    <div class="sub-text">or click to browse · MP3, WAV, M4A supported</div>
+                    <div class="file-selected" id="fileLabel"></div>
+                </div>
+
+                <button type="submit" class="btn-submit" id="submitBtn" disabled>
+                    Transcribe &amp; Process →
+                </button>
+            </form>
+        </div>
+
+        <div>
+            <!-- Step-by-step status indicator -->
+            <div class="status-block" id="statusBlock">
+                <div class="status-step" id="step-upload">
+                    <span class="step-icon">📤</span> Uploading audio to server...
+                </div>
+                <div class="status-step" id="step-transcribe">
+                    <span class="step-icon">🧠</span> Running Whisper transcription...
+                </div>
+                <div class="status-step" id="step-extract">
+                    <span class="step-icon">✨</span> Extracting decisions &amp; action items...
+                </div>
+                <div class="status-step" id="step-vector">
+                    <span class="step-icon">📦</span> Vectorizing and storing in Pinecone...
+                </div>
+            </div>
+
+            <!-- Transcript preview -->
+            <div class="transcript-preview" id="transcriptPreview">
+                <h3>Transcript Preview</h3>
+                <p id="transcriptText"></p>
+            </div>
+
+            <!-- Success banner -->
+            <div class="success-banner" id="successBanner">
+                <strong>✅ Meeting processed successfully!</strong>
+                <span id="successDetail"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CARD 2: CHAT WITH SECOND BRAIN -->
+    <div class="card chat-card">
+        <div>
+            <div class="header">
+                <h1>💬 Chat with Second Brain</h1>
+                <p>Ask the RAG assistant questions about your vectorized meeting transcripts. It will retrieve matching context to construct answers.</p>
+            </div>
+
+            <div class="field">
+                <label for="chatMeetingId">Filter by Meeting ID (Optional)</label>
+                <input type="text" id="chatMeetingId" placeholder="Leave blank to search all meetings" />
+            </div>
+        </div>
+
+        <div class="chat-area" id="chatArea">
+            <div class="chat-placeholder">
+                🤖 <strong>Second Brain Chat</strong><br>
+                Upload a meeting on the left first to copy its ID here, or search globally across all uploaded sessions!
+            </div>
+        </div>
+
+        <form id="chatForm" class="chat-input-form">
+            <input type="text" id="chatInput" placeholder="Ask a question about your meetings..." required />
+            <button type="submit" class="btn-send" id="chatSendBtn">Ask</button>
+        </form>
+    </div>
+
+</div>
+
+<script>
+    const audioInput   = document.getElementById('audioInput');
+    const dropZone     = document.getElementById('dropZone');
+    const fileLabel    = document.getElementById('fileLabel');
+    const submitBtn    = document.getElementById('submitBtn');
+    const uploadForm   = document.getElementById('uploadForm');
+    const statusBlock  = document.getElementById('statusBlock');
+
+    let selectedFile = null;
+
+    // ── File selection via click ──
+    audioInput.addEventListener('change', () => {
+        if (audioInput.files.length > 0) {
+            selectFile(audioInput.files[0]);
+        }
+    });
+
+    // ── Drag and drop ──
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file) selectFile(file);
+    });
+
+    function selectFile(file) {
+        selectedFile = file;
+        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        fileLabel.textContent = `📎 ${file.name} (${sizeMB} MB)`;
+        submitBtn.disabled = false;
+    }
+
+    // ── Status step helpers ──
+    function setStepState(stepId, state) {
+        const el = document.getElementById(stepId);
+        el.classList.remove('active', 'done', 'error');
+        if (state === 'active') {
+            el.classList.add('active');
+            if (!el.querySelector('.spinner')) {
+                const spinner = document.createElement('div');
+                spinner.className = 'spinner';
+                el.insertBefore(spinner, el.querySelector('.step-icon'));
+            }
+        } else {
+            const spinner = el.querySelector('.spinner');
+            if (spinner) spinner.remove();
+
+            if (state === 'done') {
+                el.classList.add('done');
+                el.querySelector('.step-icon').textContent = '✅';
+            } else if (state === 'error') {
+                el.classList.add('error');
+                el.querySelector('.step-icon').textContent = '❌';
+            }
+        }
+    }
+
+    // ── Form submit (Audio Processing) ──
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const title = document.getElementById('meetingTitle').value.trim();
+        if (!title || !selectedFile) return;
+
+        // Reset UI
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Processing...';
+        statusBlock.classList.add('visible');
+        document.getElementById('successBanner').classList.remove('visible');
+        document.getElementById('transcriptPreview').classList.remove('visible');
+        ['step-upload','step-transcribe','step-extract','step-vector']
+            .forEach(id => { document.getElementById(id).className = 'status-step'; });
+
+        setStepState('step-upload', 'active');
+        setStepState('step-transcribe', 'active');
+
+        try {
+            const formData = new FormData();
+            formData.append('audio', selectedFile);
+            formData.append('title', title);
+
+            setStepState('step-upload', 'done');
+            setStepState('step-transcribe', 'active');
+            setStepState('step-extract', 'active');
+            setStepState('step-vector', 'active');
+
+            const response = await fetch('/api/v1/meetings/upload-audio', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(errText || `Server error: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            // Mark all steps done
+            setStepState('step-transcribe', 'done');
+            setStepState('step-extract', 'done');
+            setStepState('step-vector', 'done');
+
+            // Show transcript preview
+            if (result.transcriptPreview) {
+                document.getElementById('transcriptText').textContent = result.transcriptPreview;
+                document.getElementById('transcriptPreview').classList.add('visible');
+            }
+
+            // Show success banner
+            document.getElementById('successDetail').textContent = `Meeting ID: ${result.meetingId}`;
+            document.getElementById('successBanner').classList.add('visible');
+
+            // Automatically copy generated Meeting ID to the Chat search field
+            if (result.meetingId) {
+                document.getElementById('chatMeetingId').value = result.meetingId;
+            }
+
+            // Reset form
+            submitBtn.textContent = 'Transcribe & Process →';
+            submitBtn.disabled = false;
+            selectedFile = null;
+            fileLabel.textContent = '';
+            audioInput.value = '';
+            document.getElementById('meetingTitle').value = '';
+
+        } catch (err) {
+            console.error('Upload failed:', err);
+            ['step-upload','step-transcribe','step-extract','step-vector']
+                .forEach(id => setStepState(id, 'error'));
+            alert('Error: ' + err.message);
+            submitBtn.textContent = 'Transcribe & Process →';
+            submitBtn.disabled = false;
+        }
+    });
+
+    // ── Chat Form Submit (RAG Querying) ──
+    const chatForm      = document.getElementById('chatForm');
+    const chatInput     = document.getElementById('chatInput');
+    const chatMeetingId = document.getElementById('chatMeetingId');
+    const chatArea      = document.getElementById('chatArea');
+    const chatSendBtn   = document.getElementById('chatSendBtn');
+
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const question = chatInput.value.trim();
+        let meetingId = chatMeetingId.value.trim();
+        if (!question) return;
+
+        // Clear input
+        chatInput.value = '';
+        if (meetingId === '') meetingId = null;
+
+        // Remove placeholder if present
+        const placeholder = chatArea.querySelector('.chat-placeholder');
+        if (placeholder) placeholder.remove();
+
+        // Add user message
+        appendMessage(question, 'user');
+
+        // Add loading message
+        const loadingMessage = appendMessage('Thinking...', 'assistant');
+        loadingMessage.style.opacity = '0.6';
+
+        try {
+            const response = await fetch('/api/chat/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question, meetingId })
+            });
+
+            loadingMessage.remove();
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(errText || `Server error: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            const assistantMsg = appendMessage(result.answer, 'assistant');
+            if (result.sources_used !== undefined) {
+                const sourcesDiv = document.createElement('span');
+                sourcesDiv.className = 'sources';
+                sourcesDiv.textContent = `📚 Context sourced from ${result.sources_used} chunk(s) in Pinecone`;
+                assistantMsg.appendChild(sourcesDiv);
+            }
+        } catch (err) {
+            console.error('Chat query failed:', err);
+            loadingMessage.remove();
+            appendMessage(`❌ Query failed: ${err.message}`, 'error');
+        }
+    });
+
+    function appendMessage(text, type) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${type}`;
+        msgDiv.textContent = text;
+        chatArea.appendChild(msgDiv);
+        chatArea.scrollTop = chatArea.scrollHeight;
+        return msgDiv;
+    }
+</script>
+</body>
+</html>

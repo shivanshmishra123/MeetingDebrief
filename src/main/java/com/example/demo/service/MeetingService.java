@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ public class MeetingService {
         Meeting meeting = new Meeting();
         meeting.setTitle(request.title);
         meeting.setTranscriptRaw(request.transcript);
+        meeting.setMeetingDate(LocalDateTime.now());
         Meeting savedMeeting = meetingRepository.save(meeting);
 
         System.out.println("✅ Meeting saved to PostgreSQL with ID: " + savedMeeting.getId());
@@ -99,7 +101,8 @@ public class MeetingService {
             Map<String, String> vectorPayload = new HashMap<>();
             vectorPayload.put("meeting_id", savedMeeting.getId().toString());
             vectorPayload.put("title", request.title);
-            vectorPayload.put("date", savedMeeting.getMeetingDate().toLocalDate().toString());
+            LocalDateTime meetingDate = savedMeeting.getMeetingDate() != null ? savedMeeting.getMeetingDate() : LocalDateTime.now();
+            vectorPayload.put("date", meetingDate.toLocalDate().toString());
             vectorPayload.put("transcript", request.transcript);
             String vectorJson = objectMapper.writeValueAsString(vectorPayload);
 
