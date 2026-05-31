@@ -1,10 +1,9 @@
 package com.example.demo.dto;
 
-import com.example.demo.model.ItemType;
 import lombok.Data;
 
 @Data
 public class AiExtractedItemDto {
-    private ItemType type;
+    private String type;  // Receives "DECISION", "ACTION_ITEM", etc. as plain string from FastAPI
     private String content;
 }

@@ -2,8 +2,8 @@ package com.example.demo.service;
 
 import com.example.demo.dto.AiExtractionResponseDto;
 import com.example.demo.dto.MeetingUploadRequest;
-import com.example.demo.dto.TranscriptRequestDto;
 import com.example.demo.model.ExtractedItem;
+import com.example.demo.model.ItemType;
 import com.example.demo.model.Meeting;
 import com.example.demo.repository.ExtractedItemRepository;
 import com.example.demo.repository.MeetingRepository;
@@ -14,14 +14,14 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 public class MeetingService {
@@ -29,65 +29,91 @@ public class MeetingService {
     private final MeetingRepository meetingRepository;
     private final ExtractedItemRepository extractedItemRepository;
     private final ObjectMapper objectMapper;
-
-    // The old reliable RestTemplate. It never fails.
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
 
     @Transactional
     public Meeting processAndSaveMeeting(MeetingUploadRequest request) {
 
-        System.out.println("========== SENDING TO PYTHON ==========");
+        System.out.println("========== INITIATING MEETING PROCESSING PIPELINE ==========");
 
-        // 1. Save the raw meeting metadata
+        // 1. Save the raw meeting metadata first
         Meeting meeting = new Meeting();
         meeting.setTitle(request.title);
         meeting.setTranscriptRaw(request.transcript);
         Meeting savedMeeting = meetingRepository.save(meeting);
 
+        System.out.println("✅ Meeting saved to PostgreSQL with ID: " + savedMeeting.getId());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
         try {
-            // 2. Force a pure JSON string manually
-            Map<String, String> payload = new HashMap<>();
-            payload.put("transcript", request.transcript);
-            String rawJson = objectMapper.writeValueAsString(payload);
+            // ── STEP A: Structured Extraction (Decisions, Action Items, etc.) ──
+            System.out.println("========== STEP A: GEMINI STRUCTURED EXTRACTION ==========");
 
-            System.out.println("Raw JSON leaving Java: " + rawJson);
+            Map<String, String> structuredPayload = new HashMap<>();
+            structuredPayload.put("transcript", request.transcript);
+            String structuredJson = objectMapper.writeValueAsString(structuredPayload);
 
-            // 3. Explicitly build the HTTP Headers
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> structuredEntity = new HttpEntity<>(structuredJson, headers);
+            String extractStructuredUrl = "http://localhost:8000/api/extract-structured";
 
-            // 4. Wrap the JSON and Headers into a raw HTTP Entity
-            HttpEntity<String> httpEntity = new HttpEntity<>(rawJson, headers);
-
-            // 5. Fire the request using RestTemplate
-            ResponseEntity<AiExtractionResponseDto> response = restTemplate.postForEntity(
-                    "http://localhost:8000/api/extract",
-                    httpEntity,
+            ResponseEntity<AiExtractionResponseDto> structuredResponse = restTemplate.postForEntity(
+                    extractStructuredUrl,
+                    structuredEntity,
                     AiExtractionResponseDto.class
             );
 
-            AiExtractionResponseDto aiResponse = response.getBody();
+            AiExtractionResponseDto aiResponse = structuredResponse.getBody();
 
-            System.out.println("========== RECEIVED FROM PYTHON ==========");
+            System.out.println("========== RECEIVED STRUCTURED DATA FROM GEMINI ==========");
 
-            // 6. Save the extracted items
+            // Persist structured extracted items
             if (aiResponse != null && aiResponse.getItems() != null) {
                 List<ExtractedItem> itemsToSave = aiResponse.getItems().stream().map(dto -> {
                     ExtractedItem item = new ExtractedItem();
                     item.setMeeting(savedMeeting);
-                    item.setType(dto.getType());
+                    // Convert String type from FastAPI to Java enum safely
+                    try {
+                        item.setType(ItemType.valueOf(dto.getType()));
+                    } catch (IllegalArgumentException e) {
+                        item.setType(ItemType.KEY_CONTEXT); // fallback for unknown types
+                    }
                     item.setContent(dto.getContent());
                     return item;
                 }).collect(Collectors.toList());
 
                 extractedItemRepository.saveAll(itemsToSave);
+                System.out.println("✅ Saved " + itemsToSave.size() + " structured items to PostgreSQL.");
             }
 
         } catch (Exception e) {
-            System.err.println("CRITICAL ERROR: " + e.getMessage());
-            throw new RuntimeException("AI Extraction failed", e);
+            System.err.println("⚠️ Structured extraction failed: " + e.getMessage());
+            // Non-fatal: we still want to attempt vectorization below
+        }
+
+        try {
+            // ── STEP B: Vector Embedding into Pinecone (for RAG chatbot) ──
+            System.out.println("========== STEP B: PINECONE VECTOR EMBEDDING ==========");
+
+            Map<String, String> vectorPayload = new HashMap<>();
+            vectorPayload.put("meeting_id", savedMeeting.getId().toString());
+            vectorPayload.put("title", request.title);
+            vectorPayload.put("date", savedMeeting.getMeetingDate().toLocalDate().toString());
+            vectorPayload.put("transcript", request.transcript);
+            String vectorJson = objectMapper.writeValueAsString(vectorPayload);
+
+            HttpEntity<String> vectorEntity = new HttpEntity<>(vectorJson, headers);
+            String extractVectorUrl = "http://localhost:8000/api/extract";
+
+            restTemplate.postForEntity(extractVectorUrl, vectorEntity, String.class);
+            System.out.println("✅ Transcript chunks vectorized and pushed to Pinecone.");
+
+        } catch (Exception e) {
+            System.err.println("⚠️ Pinecone vectorization failed: " + e.getMessage());
+            throw new RuntimeException("Pinecone vectorization failed", e);
         }
 
         return savedMeeting;
     }
-}
+}

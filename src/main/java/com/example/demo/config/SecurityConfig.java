@@ -19,11 +19,11 @@ public class SecurityConfig {
 
                 // Configure authorization rules
                 .authorizeHttpRequests(auth -> auth
-                        // We added /error here so Spring can actually tell us when it crashes!
-                        .requestMatchers("/api/v1/**", "/error").permitAll()
+                        // Permit all public API routes
+                        .requestMatchers("/api/v1/**", "/api/chat/**", "/error").permitAll()
                         .anyRequest().authenticated()
                 );
 
         return http.build();
     }
-}
+}
