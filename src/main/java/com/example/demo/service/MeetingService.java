@@ -5,6 +5,7 @@ import com.example.demo.dto.MeetingUploadRequest;
 import com.example.demo.model.ExtractedItem;
 import com.example.demo.model.ItemType;
 import com.example.demo.model.Meeting;
+import com.example.demo.model.User;
 import com.example.demo.repository.ExtractedItemRepository;
 import com.example.demo.repository.MeetingRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,19 +34,26 @@ public class MeetingService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
+    /**
+     * Full processing pipeline: save → structured extract → vectorize.
+     * The caller must supply the authenticated User so the meeting is
+     * associated with that user's account (user-scoped isolation).
+     */
     @Transactional
-    public Meeting processAndSaveMeeting(MeetingUploadRequest request) {
+    public Meeting processAndSaveMeeting(MeetingUploadRequest request, User currentUser) {
 
         System.out.println("========== INITIATING MEETING PROCESSING PIPELINE ==========");
 
-        // 1. Save the raw meeting metadata first
+        // 1. Save the raw meeting metadata first, linked to the current user
         Meeting meeting = new Meeting();
         meeting.setTitle(request.title);
         meeting.setTranscriptRaw(request.transcript);
         meeting.setMeetingDate(LocalDateTime.now());
+        meeting.setUser(currentUser);                        // ← user-scoped FK
         Meeting savedMeeting = meetingRepository.save(meeting);
 
-        System.out.println("✅ Meeting saved to PostgreSQL with ID: " + savedMeeting.getId());
+        System.out.println("✅ Meeting saved to PostgreSQL with ID: " + savedMeeting.getId()
+                + " for user: " + currentUser.getEmail());
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -75,7 +84,6 @@ public class MeetingService {
                 List<ExtractedItem> itemsToSave = aiResponse.getItems().stream().map(dto -> {
                     ExtractedItem item = new ExtractedItem();
                     item.setMeeting(savedMeeting);
-                    // Convert String type from FastAPI to Java enum safely
                     try {
                         item.setType(ItemType.valueOf(dto.getType()));
                     } catch (IllegalArgumentException e) {
@@ -119,4 +127,24 @@ public class MeetingService {
 
         return savedMeeting;
     }
-}
+
+    /**
+     * Returns ONLY meetings belonging to the current user.
+     */
+    public List<Meeting> getMeetingsForUser(UUID userId) {
+        return meetingRepository.findByUserId(userId);
+    }
+
+    /**
+     * Fetches a single meeting, verifying it belongs to the requesting user.
+     * Throws RuntimeException (→ 404) if not found OR belongs to another user.
+     */
+    public Meeting getMeetingByIdForUser(UUID meetingId, UUID userId) {
+        return meetingRepository.findByIdAndUserId(meetingId, userId)
+                .orElseThrow(() -> new RuntimeException("Meeting not found or access denied."));
+    }
+
+    public List<ExtractedItem> getExtractedItemsByMeetingId(UUID meetingId) {
+        return extractedItemRepository.findByMeetingId(meetingId);
+    }
+}
