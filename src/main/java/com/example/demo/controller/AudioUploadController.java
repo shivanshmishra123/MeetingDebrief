@@ -38,6 +38,7 @@ public class AudioUploadController {
     public ResponseEntity<?> uploadAudio(
             @RequestParam("audio") MultipartFile audioFile,
             @RequestParam("title") String title,
+            @RequestParam(value = "parentMeetingId", required = false) String parentMeetingId,
             @AuthenticationPrincipal User currentUser) {   // ← injected from JWT
 
         // Validate that a file was actually sent
@@ -47,7 +48,8 @@ public class AudioUploadController {
 
         System.out.println("🎙️ Audio upload received: " + audioFile.getOriginalFilename()
                 + " (" + audioFile.getSize() / 1024 + " KB) for meeting: " + title
-                + " by user: " + currentUser.getEmail());
+                + " by user: " + currentUser.getEmail()
+                + " parentMeetingId: " + parentMeetingId);
 
         try {
             // STEP 1: Send the audio file to Python for transcription
@@ -58,6 +60,7 @@ public class AudioUploadController {
             MeetingUploadRequest request = new MeetingUploadRequest();
             request.title = title;
             request.transcript = transcript;
+            request.parentMeetingId = parentMeetingId;
 
             // STEP 3: Run the full meeting processing pipeline, scoped to this user
             Meeting savedMeeting = meetingService.processAndSaveMeeting(request, currentUser);

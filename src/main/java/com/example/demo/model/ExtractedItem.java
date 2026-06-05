@@ -24,6 +24,7 @@ public class ExtractedItem {
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
+    @com.fasterxml.jackson.annotation.JsonProperty("isDrifted")
     @Column(name = "is_drifted")
     private boolean isDrifted = false;
 

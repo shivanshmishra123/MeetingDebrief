@@ -50,6 +50,18 @@ public class MeetingService {
         meeting.setTranscriptRaw(request.transcript);
         meeting.setMeetingDate(LocalDateTime.now());
         meeting.setUser(currentUser);                        // ← user-scoped FK
+
+        // Link to parent meeting if continuing thread
+        if (request.parentMeetingId != null && !request.parentMeetingId.trim().isEmpty()) {
+            try {
+                UUID parentUuid = UUID.fromString(request.parentMeetingId);
+                Meeting parent = meetingRepository.findById(parentUuid).orElse(null);
+                meeting.setParent(parent);
+            } catch (IllegalArgumentException e) {
+                System.err.println("⚠️ Invalid parentMeetingId UUID format: " + request.parentMeetingId);
+            }
+        }
+
         Meeting savedMeeting = meetingRepository.save(meeting);
 
         System.out.println("✅ Meeting saved to PostgreSQL with ID: " + savedMeeting.getId()
@@ -62,9 +74,16 @@ public class MeetingService {
             // ── STEP A: Structured Extraction (Decisions, Action Items, etc.) ──
             System.out.println("========== STEP A: GEMINI STRUCTURED EXTRACTION ==========");
 
-            Map<String, String> structuredPayload = new HashMap<>();
-            structuredPayload.put("transcript", request.transcript);
-            String structuredJson = objectMapper.writeValueAsString(structuredPayload);
+            com.example.demo.dto.ExtractionRequest extractionRequest = new com.example.demo.dto.ExtractionRequest();
+            extractionRequest.setTranscript(request.transcript);
+
+            List<com.example.demo.dto.HistoricItemDto> historyList = new java.util.ArrayList<>();
+            if (savedMeeting.getParent() != null) {
+                collectHistoricItemsRecursive(savedMeeting.getParent(), historyList);
+            }
+            extractionRequest.setHistory(historyList);
+
+            String structuredJson = objectMapper.writeValueAsString(extractionRequest);
 
             HttpEntity<String> structuredEntity = new HttpEntity<>(structuredJson, headers);
             String extractStructuredUrl = "http://localhost:8000/api/extract-structured";
@@ -79,22 +98,40 @@ public class MeetingService {
 
             System.out.println("========== RECEIVED STRUCTURED DATA FROM GEMINI ==========");
 
-            // Persist structured extracted items
-            if (aiResponse != null && aiResponse.getItems() != null) {
-                List<ExtractedItem> itemsToSave = aiResponse.getItems().stream().map(dto -> {
-                    ExtractedItem item = new ExtractedItem();
-                    item.setMeeting(savedMeeting);
-                    try {
-                        item.setType(ItemType.valueOf(dto.getType()));
-                    } catch (IllegalArgumentException e) {
-                        item.setType(ItemType.KEY_CONTEXT); // fallback for unknown types
+            if (aiResponse != null) {
+                // 1. Process drifted/superseded items
+                if (aiResponse.getDrifted_ids() != null) {
+                    for (String driftedIdStr : aiResponse.getDrifted_ids()) {
+                        try {
+                            UUID driftedId = UUID.fromString(driftedIdStr);
+                            extractedItemRepository.findById(driftedId).ifPresent(item -> {
+                                item.setDrifted(true);
+                                extractedItemRepository.save(item);
+                                System.out.println("🔄 Marked item " + driftedId + " as drifted/superseded.");
+                            });
+                        } catch (IllegalArgumentException e) {
+                            System.err.println("⚠️ Invalid drifted ID UUID format returned: " + driftedIdStr);
+                        }
                     }
-                    item.setContent(dto.getContent());
-                    return item;
-                }).collect(Collectors.toList());
+                }
 
-                extractedItemRepository.saveAll(itemsToSave);
-                System.out.println("✅ Saved " + itemsToSave.size() + " structured items to PostgreSQL.");
+                // 2. Persist new structured extracted items
+                if (aiResponse.getItems() != null) {
+                    List<ExtractedItem> itemsToSave = aiResponse.getItems().stream().map(dto -> {
+                        ExtractedItem item = new ExtractedItem();
+                        item.setMeeting(savedMeeting);
+                        try {
+                            item.setType(ItemType.valueOf(dto.getType()));
+                        } catch (IllegalArgumentException e) {
+                            item.setType(ItemType.KEY_CONTEXT); // fallback for unknown types
+                        }
+                        item.setContent(dto.getContent());
+                        return item;
+                    }).collect(Collectors.toList());
+
+                    extractedItemRepository.saveAll(itemsToSave);
+                    System.out.println("✅ Saved " + itemsToSave.size() + " structured items to PostgreSQL.");
+                }
             }
 
         } catch (Exception e) {
@@ -146,5 +183,22 @@ public class MeetingService {
 
     public List<ExtractedItem> getExtractedItemsByMeetingId(UUID meetingId) {
         return extractedItemRepository.findByMeetingId(meetingId);
+    }
+
+    private void collectHistoricItemsRecursive(Meeting meeting, List<com.example.demo.dto.HistoricItemDto> list) {
+        if (meeting == null) return;
+        List<ExtractedItem> items = extractedItemRepository.findByMeetingId(meeting.getId());
+        for (ExtractedItem item : items) {
+            if (!item.isDrifted()) {
+                list.add(new com.example.demo.dto.HistoricItemDto(
+                    item.getId().toString(),
+                    item.getType().name(),
+                    item.getContent()
+                ));
+            }
+        }
+        if (meeting.getParent() != null) {
+            collectHistoricItemsRecursive(meeting.getParent(), list);
+        }
     }
 }

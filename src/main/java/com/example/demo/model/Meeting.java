@@ -37,4 +37,13 @@ public class Meeting {
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnore
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    @JsonIgnore
+    private Meeting parent;
+
+    public UUID getParentId() {
+        return parent != null ? parent.getId() : null;
+    }
 }
