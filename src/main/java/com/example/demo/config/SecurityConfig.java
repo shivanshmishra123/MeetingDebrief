@@ -43,6 +43,8 @@ public class SecurityConfig {
 
             // Authorization rules
             .authorizeHttpRequests(auth -> auth
+                // Public: health check (no JWT needed — used by UptimeRobot)
+                .requestMatchers("/healthz").permitAll()
                 // Public: auth endpoints only
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 // Public: static frontend assets served by Spring Boot
