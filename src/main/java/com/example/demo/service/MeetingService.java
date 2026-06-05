@@ -34,6 +34,9 @@ public class MeetingService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
+    @org.springframework.beans.factory.annotation.Value("${ai.service.url}")
+    private String aiServiceUrl;
+
     /**
      * Full processing pipeline: save → structured extract → vectorize.
      * The caller must supply the authenticated User so the meeting is
@@ -152,7 +155,7 @@ public class MeetingService {
             String vectorJson = objectMapper.writeValueAsString(vectorPayload);
 
             HttpEntity<String> vectorEntity = new HttpEntity<>(vectorJson, headers);
-            String extractVectorUrl = "http://localhost:8000/api/extract";
+            String extractVectorUrl = aiServiceUrl + "/api/extract";
 
             restTemplate.postForEntity(extractVectorUrl, vectorEntity, String.class);
             System.out.println("✅ Transcript chunks vectorized and pushed to Pinecone.");

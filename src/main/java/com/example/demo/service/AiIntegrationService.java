@@ -16,14 +16,12 @@ import java.util.List;
 public class AiIntegrationService {
 
     private final RestTemplate restTemplate;
-
-    // Split into specific endpoints
-    private final String AI_QUERY_URL = "http://localhost:8000/api/query";
-    private final String AI_EXTRACT_URL = "http://localhost:8000/api/extract-structured";
+    private final String aiServiceUrl;
 
     @Autowired
-    public AiIntegrationService(RestTemplate restTemplate) {
+    public AiIntegrationService(RestTemplate restTemplate, @org.springframework.beans.factory.annotation.Value("${ai.service.url}") String aiServiceUrl) {
         this.restTemplate = restTemplate;
+        this.aiServiceUrl = aiServiceUrl;
     }
 
     /**
@@ -32,9 +30,10 @@ public class AiIntegrationService {
      */
     public QueryResponseDTO askMeetingQuestion(String question, String meetingId) {
         QueryRequestDTO requestPayload = new QueryRequestDTO(question, meetingId);
+        String queryUrl = aiServiceUrl + "/api/query";
 
         // Fires the POST request and automatically maps the JSON back to our DTO
-        return restTemplate.postForObject(AI_QUERY_URL, requestPayload, QueryResponseDTO.class);
+        return restTemplate.postForObject(queryUrl, requestPayload, QueryResponseDTO.class);
     }
 
     /**
@@ -42,9 +41,10 @@ public class AiIntegrationService {
      */
     public List<AiExtractedItemDto> extractStructuredData(String transcript) {
         TranscriptRequestDto requestPayload = new TranscriptRequestDto(transcript);
+        String extractUrl = aiServiceUrl + "/api/extract-structured";
 
         AiExtractionResponseDto response = restTemplate.postForObject(
-                AI_EXTRACT_URL,
+                extractUrl,
                 requestPayload,
                 AiExtractionResponseDto.class
         );

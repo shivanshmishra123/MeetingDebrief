@@ -29,14 +29,16 @@ import java.util.Map;
 public class TranscriptionService {
 
     private final RestTemplate restTemplate;
-    private final String TRANSCRIPTION_URL = "http://localhost:8000/api/transcribe";
+    private final String aiServiceUrl;
 
     @Autowired
-    public TranscriptionService(RestTemplate restTemplate) {
+    public TranscriptionService(RestTemplate restTemplate, @org.springframework.beans.factory.annotation.Value("${ai.service.url}") String aiServiceUrl) {
         this.restTemplate = restTemplate;
+        this.aiServiceUrl = aiServiceUrl;
     }
 
     public String transcribeAudio(MultipartFile audioFile) throws Exception {
+        String transcriptionUrl = aiServiceUrl + "/api/transcribe";
 
         // STEP 1: Read all bytes from the uploaded file into memory.
         // MultipartFile gives us the raw bytes — we need to wrap them
@@ -70,7 +72,7 @@ public class TranscriptionService {
         // STEP 5: Send to FastAPI and parse the response
         // FastAPI returns: { "transcript": "...", "duration_seconds": 120, "language": "en" }
         ResponseEntity<Map> response = restTemplate.exchange(
-                TRANSCRIPTION_URL,
+                transcriptionUrl,
                 HttpMethod.POST,
                 requestEntity,
                 Map.class
