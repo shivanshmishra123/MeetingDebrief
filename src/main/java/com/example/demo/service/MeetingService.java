@@ -89,7 +89,7 @@ public class MeetingService {
             String structuredJson = objectMapper.writeValueAsString(extractionRequest);
 
             HttpEntity<String> structuredEntity = new HttpEntity<>(structuredJson, headers);
-            String extractStructuredUrl = "http://localhost:8000/api/extract-structured";
+            String extractStructuredUrl = aiServiceUrl + "/api/extract-structured";
 
             ResponseEntity<AiExtractionResponseDto> structuredResponse = restTemplate.postForEntity(
                     extractStructuredUrl,
